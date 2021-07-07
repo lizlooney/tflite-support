@@ -18,9 +18,10 @@ namespace tflite {
 namespace task {
 namespace processor {
 
-absl::Status Preprocessor::VerifyAndInit(
+/* static */
+absl::Status Preprocessor::SanityCheck(
     int num_expected_tensors, core::TfLiteEngine* engine,
-    const std::initializer_list<int> input_indices) {
+    const std::initializer_list<int> input_indices, bool requires_metadata) {
   if (input_indices.size() != num_expected_tensors) {
     return support::CreateStatusWithPayload(
         absl::StatusCode::kInvalidArgument,
@@ -38,26 +39,26 @@ absl::Status Preprocessor::VerifyAndInit(
               "Invalid input_index: %d. Model has %d input tensors.",
               input_index, engine->InputCount(engine->interpreter())));
     }
-    auto* metadata =
-        engine->metadata_extractor()->GetInputTensorMetadata(input_index);
-    if (metadata == nullptr) {
-      return CreateStatusWithPayload(
-          absl::StatusCode::kInvalidArgument,
-          absl::StrFormat("Input tensor %d is missing TensorMetadata.",
-                          input_index),
-          support::TfLiteSupportStatus::kMetadataNotFoundError);
+    if (requires_metadata) {
+      auto* metadata =
+          engine->metadata_extractor()->GetInputTensorMetadata(input_index);
+      if (metadata == nullptr) {
+        return CreateStatusWithPayload(
+            absl::StatusCode::kInvalidArgument,
+            absl::StrFormat("Input tensor %d is missing TensorMetadata.",
+                            input_index),
+            support::TfLiteSupportStatus::kMetadataNotFoundError);
+      }
     }
   }
-
-  engine_ = engine;
-  input_tensor_indices_ = input_indices;
 
   return absl::OkStatus();
 }
 
-absl::Status Postprocessor::VerifyAndInit(
+/* static */
+absl::Status Postprocessor::SanityCheck(
     int num_expected_tensors, core::TfLiteEngine* engine,
-    const std::initializer_list<int> output_indices) {
+    const std::initializer_list<int> output_indices, bool requires_metadata) {
   if (output_indices.size() != num_expected_tensors) {
     return support::CreateStatusWithPayload(
         absl::StatusCode::kInvalidArgument,
@@ -75,19 +76,18 @@ absl::Status Postprocessor::VerifyAndInit(
               "Invalid output_index: %d. Model has %d output tensors.",
               output_index, engine->OutputCount(engine->interpreter())));
     }
-    auto* metadata =
-        engine->metadata_extractor()->GetOutputTensorMetadata(output_index);
-    if (metadata == nullptr) {
-      return CreateStatusWithPayload(
-          absl::StatusCode::kInvalidArgument,
-          absl::StrFormat("Output tensor %d is missing TensorMetadata.",
-                          output_index),
-          support::TfLiteSupportStatus::kMetadataNotFoundError);
+    if (requires_metadata) {
+      auto* metadata =
+          engine->metadata_extractor()->GetOutputTensorMetadata(output_index);
+      if (metadata == nullptr) {
+        return CreateStatusWithPayload(
+            absl::StatusCode::kInvalidArgument,
+            absl::StrFormat("Output tensor %d is missing TensorMetadata.",
+                            output_index),
+            support::TfLiteSupportStatus::kMetadataNotFoundError);
+      }
     }
   }
-
-  engine_ = engine;
-  output_tensor_indices_ = output_indices;
 
   return absl::OkStatus();
 }

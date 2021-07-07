@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_SUPPORT_CC_TASK_PROCESSOR_IMAGE_PREPROCESSOR_H_
 #define TENSORFLOW_LITE_SUPPORT_CC_TASK_PROCESSOR_IMAGE_PREPROCESSOR_H_
 
+#include "absl/memory/memory.h"
 #include "tensorflow_lite_support/cc/port/status_macros.h"
 #include "tensorflow_lite_support/cc/task/processor/processor.h"
 #include "tensorflow_lite_support/cc/task/vision/core/frame_buffer.h"
@@ -42,12 +43,16 @@ class ImagePreprocessor : public Preprocessor {
       const std::initializer_list<int> input_indices,
       const vision::FrameBufferUtils::ProcessEngine& process_engine =
           vision::FrameBufferUtils::ProcessEngine::kLibyuv) {
-    auto task = absl::WrapUnique(new ImagePreprocessor(process_engine));
-
     static constexpr int tensor_count = 1;
-    RETURN_IF_ERROR(task->VerifyAndInit(tensor_count, engine, input_indices));
-    RETURN_IF_ERROR(task->InitInputSpec());
-    return task;
+    RETURN_IF_ERROR(Preprocessor::SanityCheck(tensor_count, engine,
+                                              input_indices,
+                                              /* requires_metadata = */ false));
+
+    auto processor =
+        absl::WrapUnique(new ImagePreprocessor(engine, input_indices));
+
+    RETURN_IF_ERROR(processor->Init(process_engine));
+    return processor;
   }
 
   // Processes the provided FrameBuffer and populate tensor values.
@@ -75,23 +80,25 @@ class ImagePreprocessor : public Preprocessor {
   absl::Status Preprocess(const vision::FrameBuffer& frame_buffer,
                           const vision::BoundingBox& roi);
 
- protected:
-  ImagePreprocessor(
-      const vision::FrameBufferUtils::ProcessEngine& process_engine)
-      : frame_buffer_utils_(process_engine) {}
+  // Returns the spec of model. Passing in an image with this spec will speed up
+  // the inference as it bypasses image cropping and resizing.
+  const vision::ImageTensorSpecs& GetInputSpecs() const { return input_specs_; }
 
  private:
+  using Preprocessor::Preprocessor;
+
   // Returns false if image preprocessing could be skipped, true otherwise.
   bool IsImagePreprocessingNeeded(const vision::FrameBuffer& frame_buffer,
                                   const vision::BoundingBox& roi);
 
-  absl::Status InitInputSpec();
+  absl::Status Init(
+      const vision::FrameBufferUtils::ProcessEngine& process_engine);
 
   // Parameters related to the input tensor which represents an image.
   vision::ImageTensorSpecs input_specs_;
 
   // Utils for input image preprocessing (resizing, colorspace conversion, etc).
-  vision::FrameBufferUtils frame_buffer_utils_;
+  std::unique_ptr<vision::FrameBufferUtils> frame_buffer_utils_;
 };
 
 }  // namespace processor
